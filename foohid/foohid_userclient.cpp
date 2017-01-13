@@ -59,7 +59,7 @@ void it_unbit_foohid_userclient::stop(IOService *provider) {
  *  };
  */
 const IOExternalMethodDispatch it_unbit_foohid_userclient::s_methods[it_unbit_foohid_method_count] = {
-    {(IOExternalMethodAction)&it_unbit_foohid_userclient::sMethodCreate, 8, 0, 0, 0},
+    {(IOExternalMethodAction)&it_unbit_foohid_userclient::sMethodCreate, 10, 0, 0, 0},
     {(IOExternalMethodAction)&it_unbit_foohid_userclient::sMethodDestroy, 2, 0, 0, 0},
     {(IOExternalMethodAction)&it_unbit_foohid_userclient::sMethodSend, 4, 0, 0, 0},
     {(IOExternalMethodAction)&it_unbit_foohid_userclient::sMethodList, 2, 0, 2, 0},
@@ -104,18 +104,22 @@ IOReturn it_unbit_foohid_userclient::methodCreate(IOExternalMethodArguments *arg
     IOMemoryDescriptor *user_buf = nullptr;
     IOMemoryDescriptor *descriptor_buf = nullptr;
     IOMemoryDescriptor *serial_number_buf = nullptr;
+    IOMemoryDescriptor *ctl_name_buf = nullptr;
     
     bool user_buf_complete = false;
     bool descriptor_buf_complete = false;
     bool serial_number_buf_complete = false;
+    bool ctl_name_buf_complete = false;
     
     IOMemoryMap *map = nullptr;
     IOMemoryMap *map2 = nullptr;
     IOMemoryMap *map3 = nullptr;
+    IOMemoryMap *map4 = nullptr;
     
     char *ptr = nullptr;
     unsigned char *ptr2 = nullptr;
     char *ptr3 = nullptr;
+    char *ptr4 = nullptr;
     
     bool ret = false;
     
@@ -129,6 +133,9 @@ IOReturn it_unbit_foohid_userclient::methodCreate(IOExternalMethodArguments *arg
     UInt32 vendorID = (UInt32)arguments->scalarInput[6];
     UInt32 productID = (UInt32)arguments->scalarInput[7];
     
+    UInt8 *ctl_name_ptr = (UInt8 *)arguments->scalarInput[8];
+    UInt8 ctl_name_len = (UInt8)arguments->scalarInput[9];
+
     user_buf = IOMemoryDescriptor::withAddressRange((vm_address_t)name_ptr, name_len,
                                                     kIODirectionOut, m_owner);
     if (!user_buf) goto nomem;
@@ -144,11 +151,20 @@ IOReturn it_unbit_foohid_userclient::methodCreate(IOExternalMethodArguments *arg
     serial_number_buf = IOMemoryDescriptor::withAddressRange((vm_address_t)serial_number_ptr,
                                                              serial_number_len,
                                                              kIODirectionOut, m_owner);
-    
+
     if (!serial_number_buf) goto nomem;
     if (serial_number_buf->prepare() != kIOReturnSuccess) goto nomem;
     serial_number_buf_complete = true;
+
+    ctl_name_buf = IOMemoryDescriptor::withAddressRange((vm_address_t)ctl_name_ptr,
+                                                             ctl_name_len,
+                                                             kIODirectionOut, m_owner);
     
+    if (!ctl_name_buf) goto nomem;
+    if (ctl_name_buf->prepare() != kIOReturnSuccess) goto nomem;
+    ctl_name_buf_complete = true;
+
+
     map = user_buf->map();
     if (!map) goto nomem;
     
@@ -157,6 +173,9 @@ IOReturn it_unbit_foohid_userclient::methodCreate(IOExternalMethodArguments *arg
     
     map3 = serial_number_buf->map();
     if (!map3) goto nomem;
+
+    map4 = ctl_name_buf->map();
+    if (!map4) goto nomem;
     
     ptr = (char *)map->getAddress();
     if (!ptr) goto nomem;
@@ -166,22 +185,29 @@ IOReturn it_unbit_foohid_userclient::methodCreate(IOExternalMethodArguments *arg
     
     ptr3 = (char *)map3->getAddress();
     if (!ptr3) goto nomem;
+
+    ptr4 = (char *)map4->getAddress();
+    if (!ptr4) goto nomem;
     
     ret = m_hid_provider->methodCreate(ptr, name_len, ptr2, descriptor_len, ptr3,
-                                       serial_number_len, vendorID, productID);
+                                       serial_number_len, vendorID, productID,
+                                       ptr4, ctl_name_len);
     
     user_buf->complete();
     descriptor_buf->complete();
     serial_number_buf->complete();
+    ctl_name_buf->complete();
     
     map->release();
     map2->release();
     map3->release();
+    map4->release();
     
     user_buf->release();
     descriptor_buf->release();
     serial_number_buf->release();
-    
+    ctl_name_buf->release();
+
     if (ret) {
         return kIOReturnSuccess;
     }
@@ -191,13 +217,16 @@ IOReturn it_unbit_foohid_userclient::methodCreate(IOExternalMethodArguments *arg
 nomem:
     if (map) map->release();
     if (map2) map2->release();
-    if (map3) map2->release();
+    if (map3) map3->release();
+    if (map4) map4->release();
     if (user_buf_complete) user_buf->complete();
     if (user_buf) user_buf->release();
     if (descriptor_buf_complete) descriptor_buf->complete();
     if (descriptor_buf) descriptor_buf->release();
     if (serial_number_buf_complete) serial_number_buf->complete();
     if (serial_number_buf) serial_number_buf->release();
+    if (ctl_name_buf_complete) ctl_name_buf->complete();
+    if (ctl_name_buf) ctl_name_buf->release();
     return kIOReturnNoMemory;
 }
 

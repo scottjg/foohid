@@ -21,13 +21,16 @@ public:
      *  @param serial_number_len     Length of 'serial_number'
      *  @param vendor_id             A vendor ID.
      *  @param product_id            A product ID.
+     *  @param ctl_name              A ctl name for the shared socket
+     *  @param ctl_name_len          Length of the ctl name for the shared socket
      *
      *  @return True on success.
      */
     virtual bool methodCreate(char *name, UInt8 name_len,
                               unsigned char *report_descriptor, UInt16 report_descriptor_len,
                               char *serial_number = nullptr, UInt16 serial_number_len = 0,
-                              UInt32 vendor_id = 0, UInt32 product_id = 0);
+                              UInt32 vendor_id = 0, UInt32 product_id = 0,
+                              char *ctl_name = nullptr, UInt16 ctl_name_len = 0);
     
     /**
      *  Destroy a given device.

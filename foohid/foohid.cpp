@@ -70,13 +70,15 @@ bool it_unbit_foohid::methodCreate(char *name, UInt8 name_len,
                                    unsigned char *report_descriptor,
                                    UInt16 report_descriptor_len,
                                    char *serial_number, UInt16 serial_number_len,
-                                   UInt32 vendor_id, UInt32 product_id) {
+                                   UInt32 vendor_id, UInt32 product_id,
+                                   char *ctl_name, UInt16 ctl_name_len) {
     it_unbit_foohid_device *device = nullptr;
     
     OSString *key = nullptr;
     OSString *serial_number_s = nullptr;
+    OSString *ctl_name_s = nullptr;
     
-    if (report_descriptor_len == 0 || name_len == 0) return false;
+    if (report_descriptor_len == 0 || name_len == 0 || ctl_name_len == 0) return false;
     
     {
         char *c_name = (char *)IOMalloc(name_len + 1);
@@ -114,15 +116,26 @@ bool it_unbit_foohid::methodCreate(char *name, UInt8 name_len,
         IOFree(c_serial_number, serial_number_len + 1);
     }
     if (!serial_number_s) goto fail;
+
+    {
+        char *c_ctl_name = (char *)IOMalloc(ctl_name_len + 1);
+        if (!c_ctl_name) return false;
+        memcpy(c_ctl_name, ctl_name, ctl_name_len);
+        c_ctl_name[ctl_name_len] = 0;
+        ctl_name_s = OSString::withCString(c_ctl_name);
+        IOFree(c_ctl_name, ctl_name_len + 1);
+    }
+    if (!ctl_name_s) goto fail;
     
     device->setSerialNumberString(serial_number_s);
     device->setVendorID(vendor_id);
     device->setProductID(product_id);
+    if (device->createCtlSocket(ctl_name_s) != kIOReturnSuccess) goto fail;
     
     LogD("Attempting to init a new virtual device with name: '%s'; "
-         "serial number ('%s'); vendor ID (%d); product ID (%d).",
+         "serial number ('%s'); vendor ID (%d); product ID (%d); ctl name ('%s').",
          key->getCStringNoCopy(), serial_number_s->getCStringNoCopy(),
-         vendor_id, product_id);
+         vendor_id, product_id, ctl_name_s->getCStringNoCopy());
     
     if (!device->init(nullptr)) {
         goto fail;
@@ -145,12 +158,14 @@ bool it_unbit_foohid::methodCreate(char *name, UInt8 name_len,
     
     key->release();
     serial_number_s->release();
-    
+    ctl_name_s->release();
+
     return true;
     
 fail:
     key->release();
     if (serial_number_s) serial_number_s->release();
+    if (ctl_name_s) ctl_name_s->release();
     if (device) device->release();
     
     return false;

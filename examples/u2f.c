@@ -7,6 +7,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
+#include <sys/sys_domain.h>
+#include <sys/types.h>
+#include <sys/kern_control.h>
+#include <sys/ioctl.h>
 
 unsigned char report_descriptor[] = {
     0x06, 0xd0, 0xf1, //USAGE_PAGE(FIDO Alliance)
@@ -38,13 +43,14 @@ struct mouse_report_t {
 #define FOOHID_CREATE 0  // create selector
 #define FOOHID_SEND 2  // send selector
 
+#define DEVICE_CTL_NAME "it.unbit.foohid.u2f"
 #define DEVICE_NAME "Foohid Virtual U2F"
 #define DEVICE_SN "SN 123456"
 
 int main() {
     io_iterator_t iterator;
     io_service_t service;
-    io_connect_t connect;
+    io_connect_t connection;
 
     // Get a reference to the IOService
     kern_return_t ret = IOServiceGetMatchingServices(kIOMasterPortDefault, IOServiceMatching(SERVICE_NAME), &iterator);
@@ -57,7 +63,7 @@ int main() {
     // Iterate till success
     int found = 0;
     while ((service = IOIteratorNext(iterator)) != IO_OBJECT_NULL) {
-        ret = IOServiceOpen(service, mach_task_self(), 0, &connect);
+        ret = IOServiceOpen(service, mach_task_self(), 0, &connection);
 
         if (ret == KERN_SUCCESS) {
             found = 1;
@@ -74,7 +80,7 @@ int main() {
     }
 
     // Fill up the input arguments.
-    uint32_t input_count = 8;
+    uint32_t input_count = 10;
     uint64_t input[input_count];
     input[0] = (uint64_t) strdup(DEVICE_NAME);  // device name
     input[1] = strlen((char *)input[0]);  // name length
@@ -84,11 +90,43 @@ int main() {
     input[5] = strlen((char *)input[4]);  // serial number len
     input[6] = (uint64_t) 2;  // vendor ID
     input[7] = (uint64_t) 3;  // device ID
+    input[8] = (uint64_t) strdup(DEVICE_CTL_NAME);  // ctl name for shared socket
+    input[9] = strlen((char *)input[8]);  // ctl name len
 
-    ret = IOConnectCallScalarMethod(connect, FOOHID_CREATE, input, input_count, NULL, 0);
+    ret = IOConnectCallScalarMethod(connection, FOOHID_CREATE, input, input_count, NULL, 0);
     if (ret != KERN_SUCCESS) {
         printf("Unable to create HID device. May be fine if created previously.\n");
     }
+
+    int fd = socket(PF_SYSTEM, SOCK_DGRAM, SYSPROTO_CONTROL);
+    if (fd == -1) {
+        perror("Unable to create socket");
+        exit(1);
+    }
+
+    struct ctl_info info;
+    memset(&info, 0, sizeof(info));
+    strncpy(info.ctl_name, DEVICE_CTL_NAME, sizeof(info.ctl_name));
+    if (ioctl(fd, CTLIOCGINFO, &info)) {
+        perror("Could not get ID for kernel control.\n");
+        exit(-1);
+    }
+
+    struct sockaddr_ctl addr;
+    bzero(&addr, sizeof(addr));
+    addr.sc_len = sizeof(addr);
+    addr.sc_family = AF_SYSTEM;
+    addr.ss_sysaddr = AF_SYS_CONTROL;
+    addr.sc_id = info.ctl_id;
+    addr.sc_unit = 0;
+
+    int r = connect(fd, (struct sockaddr *)&addr, sizeof(addr));
+    if (r != 0) {
+        fprintf(stderr, "connect failed: %d\n", r);
+        exit(1);
+    }
+
+
 
     // Arguments to be passed through the HID message.
     // struct mouse_report_t mouse;
@@ -104,11 +142,17 @@ int main() {
         // mouse.x = rand();
         // mouse.y = rand();
 
-        // ret = IOConnectCallScalarMethod(connect, FOOHID_SEND, send, send_count, NULL, 0);
+        // ret = IOConnectCallScalarMethod(connection, FOOHID_SEND, send, send_count, NULL, 0);
         // if (ret != KERN_SUCCESS) {
         //     printf("Unable to send message to HID device.\n");
         // }
 
-        sleep(1);  // sleep for a second
+        unsigned char buf[256];
+        ssize_t d = read(fd, buf, sizeof(buf));
+        printf("read() returned %d\n", d);
+        for (int i = 0; i < d; i++) {
+            printf("%02x ", buf[i]);
+        }
+        printf("\n");
     }
 }

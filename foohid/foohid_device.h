@@ -1,3 +1,4 @@
+#include <sys/kern_control.h>
 #include "IOKit/hid/IOHIDDevice.h"
 
 class it_unbit_foohid_device : public IOHIDDevice {
@@ -39,6 +40,13 @@ public:
      *  @param productID The product ID.
      */
     virtual void setProductID(uint32_t productID);
+
+    /**
+     *  Creates the kernel control socket.
+     *
+     *  @param ctlName The ctl name of the socket.
+     */
+    virtual IOReturn createCtlSocket(OSString *ctlName);
     
     /**
      *  Return the device name, WITHOUT increasing the reference count.
@@ -53,7 +61,12 @@ public:
     virtual OSNumber *newProductIDNumber() const override;
     
     virtual IOReturn newReportDescriptor(IOMemoryDescriptor **descriptor) const override;
-    
+
+    virtual IOReturn setReport(IOMemoryDescriptor *report, IOHIDReportType reportType, IOOptionBits options = 0) override;
+
+    void ctlDisconnected();
+    void ctlConnectedWithUnit(unsigned int ctlUnit);
+
     unsigned char *reportDescriptor = nullptr;
     UInt16 reportDescriptor_len;
     
@@ -64,4 +77,7 @@ private:
     OSString *m_serial_number_string = nullptr;
     OSNumber *m_vendor_id = nullptr;
     OSNumber *m_product_id = nullptr;
+    kern_ctl_ref m_kern_ctl_ref = nullptr;
+    bool m_ctlConnected;
+    unsigned int m_ctlUnit;
 };
